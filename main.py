@@ -56,7 +56,23 @@ def get_package_url(authorizationHeader, Package_name):
             package_urls.append(value)
     return package_urls
 
-
+def get_package_file(authorizationHeader, package_url, package_group):
+    result = post(
+        package_url,
+        verify=False,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": authorizationHeader,
+        },
+    )
+    filename = result.headers["Content-Disposition"].split("=")[1].rsplit(".zip")[0]
+    if not path.exists(package_group):
+        mkdir(package_group)
+    package_filename = f"{filename}-{date.today()}.zip"
+    package_filename = path.abspath(f"{package_group}\{package_filename}")
+    with open(package_filename, "wb") as file:
+        file.write(result.content)
+    
 if __name__ == "__main__":
     simplefilter("ignore", InsecureRequestWarning)
     config = Config()
@@ -66,4 +82,7 @@ if __name__ == "__main__":
     package_name_list = get_package_name_list(authorizationHeader)
     for package_name in package_name_list:
         package_url_list = get_package_url(authorizationHeader, package_name)
+        for package_url in package_url_list:
+            get_package_file(authorizationHeader, package_url, package_name)
+
         
