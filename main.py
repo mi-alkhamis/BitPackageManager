@@ -36,6 +36,27 @@ def get_package_name_list(authorizationHeader):
     return package_name_list
 
 
+def get_package_url(authorizationHeader, Package_name):
+    request_id = uuid4()
+    apiEndpoint_Url = f"https://{config.api_server}/api/v1.0/jsonrpc/packages"
+    request = f'{{"params": {{"packageName":"{Package_name}"}},"jsonrpc": "2.0","method": "getInstallationLinks","id": "{request_id}"}}'
+    result = post(
+        apiEndpoint_Url,
+        data=request,
+        verify=False,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": authorizationHeader,
+        },
+    )
+    json_result = result.json()
+    package_urls = []
+    for key, value in json_result["result"][0].items():
+        if key.lower().find("fullkitwindows") != -1:
+            package_urls.append(value)
+    return package_urls
+
+
 if __name__ == "__main__":
     simplefilter("ignore", InsecureRequestWarning)
     config = Config()
@@ -43,4 +64,6 @@ if __name__ == "__main__":
     api_key = config.api_key
     authorizationHeader = set_authorization_header()
     package_name_list = get_package_name_list(authorizationHeader)
-    
+    for package_name in package_name_list:
+        package_url_list = get_package_url(authorizationHeader, package_name)
+        
