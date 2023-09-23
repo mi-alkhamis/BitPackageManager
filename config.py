@@ -18,3 +18,18 @@ class Config:
     def api_server(self):
         return str(self.get("SERVER"))
 
+    @property
+    def ftp_server(self):
+        return str(self.get("FTP"))
+
+    @property
+    def ftp_user(self):
+        return str(self.get("FTP_USER"))
+
+    @property
+    def ftp_password(self):
+        return str(self.get("FTP_PASS"))
+
+    @property
+    def root_dir(self):
+        return str(self.get("ROOT_DIR"))
