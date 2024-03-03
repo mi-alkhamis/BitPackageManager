@@ -62,8 +62,17 @@ Replace the placeholder values (`your_bitdefender_api_key`, `your_bitdefender_ap
 5. The process continues for all available packages.
 
 ## To-Do List
+- [x] Bitdefender Package feth
+- [x] Package Version Checker 
+- [x] Configuration Validation
+- [x] FTP Server Configuration Checker 
+- [ ] Progress Reporting                
+- [ ] Retry Mechanism
+- [ ] Logging Enhancements 
+- [x] Dynamic FTP Path Enchantment
+- [ ] Config Settings Wizardry
+- [x] FTP Package Uploader
 
-...
 
 ## How to Contribute
 
