@@ -2,12 +2,12 @@ import re
 from base64 import b64encode
 from datetime import date
 from ftplib import FTP as ftp
-from os import mkdir, path
 from uuid import uuid4
 from warnings import simplefilter
 from requests import post
 from urllib3.exceptions import InsecureRequestWarning
 from config import Config
+import signal, readchar, os, sys
 
 
 def set_authorization_header():
@@ -55,7 +55,7 @@ def get_package_name_list(authorization_header):
     for package_name in json_result["result"]["items"]:
         if package_name["name"] != "Default Security Server Package":
             package_name_list.append(package_name["name"])
-    print(f"Package Name List: {package_name_list}")
+    logger.info(f"Package Name List: {package_name_list}")
     return package_name_list
 
 
@@ -90,7 +90,7 @@ def get_package_url(authorization_header, package_name):
     for key, value in json_result["result"][0].items():
         if key.lower().find("fullkitwindows") != -1:
             package_urls.append(value)
-    print(f"{package_name} URLs: {package_urls}")
+    logger.info(f"{package_name} URLs: {package_urls}")
     return package_urls
 
 
@@ -120,7 +120,7 @@ def get_package_file(authorization_header, package_url, package_group):
             "Authorization": authorization_header,
         },
     )
-    print("Downloading full package")
+    logger.info("Downloading full package")
     filename = result.headers["Content-Disposition"].split("=")[1].rsplit(".zip")[0]
     package_version = filename.split("_")[-1]
     repo_update_status = check_packages_version(package_group, package_version)
@@ -131,10 +131,10 @@ def get_package_file(authorization_header, package_url, package_group):
         package_filename = path.join(package_group, package_filename)
         with open(package_filename, "wb") as file:
             file.write(result.content)
-        print(f"Uploading: {package_group}:{package_filename}")
+        logger.info(f"Uploading: {package_group}:{package_filename}")
         send_to_ftp(package_group, package_filename, package_version)
     else:
-        print("FTP Repository is update")
+        logger.info("FTP Repository is update")
         return True
 
 
@@ -193,16 +193,43 @@ def check_packages_version(package_group, version):
     filenames = ftp_server.nlst()
     for filename in filenames:
         file_version = re.search(r"(\d+\.\d+\.\d+\.\d+)", filename)
-        print(f"Checking Version: {filename}")
+        logger.info(f"Checking Version: {filename}")
         if file_version.group() < version:
             ftp_server.delete(filename)
             return False
         return True
 
 
+def exit_handler(signum, frame):
+    """
+    Handle the exit signal by asking the user for confirmation.
+
+    Args:
+        signum (int): The signal number.
+        frame (frame object): The current stack frame.
+
+    Returns:
+        None
+    """
+    messsage = "Ctrl+C was pressed. Do you really want to exit? y/n "
+    print(messsage, end="", flush=True)
+    respond = readchar.readchar()
+    while readchar.readchar() != b"\n":
+        pass
+    if respond == "y":
+        print("")
+        exit(1)
+    else:
+        print("", end="\r", flush=True)
+        print(" " * len(messsage), end="", flush=True)
+        print("    ", end="\r", flush=True)
+
+
 if __name__ == "__main__":
     simplefilter("ignore", InsecureRequestWarning)
     config = Config()
+    logger = config.logging()
+    signal.signal(signal.SIGINT, exit_handler)
     bit_server_ip = config.api_server
     api_key = config.api_key
     header = set_authorization_header()
@@ -212,5 +239,5 @@ if __name__ == "__main__":
         for package_url in package_url_list:
             status = get_package_file(header, package_url, package_name)
             if status == True:
-                exit(1)
+                sys.exit(1)
             # check_packages_version(package_group=package_name, version="7.9.10.285")
