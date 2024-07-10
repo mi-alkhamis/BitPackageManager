@@ -1,13 +1,15 @@
 import re
 from base64 import b64encode
 from datetime import date
-from ftplib import FTP as ftp
+from ftplib import FTP as ftp, FTP_TLS as ftp_tls
 from uuid import uuid4
 from warnings import simplefilter
-from requests import post
+import requests
 from urllib3.exceptions import InsecureRequestWarning
 from config import Config
-import signal, readchar, os, sys
+import signal, readchar, sys
+from os import path, makedirs
+from packaging import version
 
 
 def set_authorization_header():
@@ -19,7 +21,7 @@ def set_authorization_header():
     Returns:
         str: The authorization header value.
     """
-    login_string = config.api_key + ":"
+    login_string = f"{config.api_key}:"
     encoded_user_pass_sequence = str(b64encode(login_string.encode()), "utf-8")
     authorization_header = "Basic " + encoded_user_pass_sequence
     return authorization_header
@@ -40,16 +42,21 @@ def get_package_name_list(authorization_header):
     """
     request_id = uuid4()
     api_endpoint = f"https://{config.api_server}/api/v1.0/jsonrpc/packages"
-    request = f'{{"params": {{}},"jsonrpc": "2.0","method":"getPackagesList","id": "{request_id}"}}'
-    result = post(
-        api_endpoint,
-        data=request,
-        verify=False,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": authorization_header,
-        },
-    )
+    data = f'{{"params": {{}},"jsonrpc": "2.0","method":"getPackagesList","id": "{request_id}"}}'
+    try:
+        result = requests.post(
+            api_endpoint,
+            data=data,
+            verify=False,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": authorization_header,
+            },
+        )
+    except requests.exceptions.ConnectTimeout as e:
+        logger.error(f"Connection timeout: {e}")
+        sys.exit(1)
+
     json_result = result.json()
     package_name_list = []
     for package_name in json_result["result"]["items"]:
@@ -75,16 +82,20 @@ def get_package_url(authorization_header, package_name):
     """
     request_id = uuid4()
     api_endpoint = f"https://{config.api_server}/api/v1.0/jsonrpc/packages"
-    request = f'{{"params": {{"packageName":"{package_name}"}},"jsonrpc": "2.0","method": "getInstallationLinks","id": "{request_id}"}}'
-    result = post(
-        api_endpoint,
-        data=request,
-        verify=False,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": authorization_header,
-        },
-    )
+    data = f'{{"params": {{"packageName":"{package_name}"}},"jsonrpc": "2.0","method": "getInstallationLinks","id": "{request_id}"}}'
+    try:
+        result = requests.post(
+            api_endpoint,
+            data=data,
+            verify=False,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": authorization_header,
+            },
+        )
+    except requests.exceptions.ConnectTimeout as e:
+        logger.error(f"{e}")
+        sys.exit(1)
     json_result = result.json()
     package_urls = []
     for key, value in json_result["result"][0].items():
@@ -112,21 +123,24 @@ def get_package_file(authorization_header, package_url, package_group):
     Returns:
         bool: True if the FTP repository is up to date, False otherwise.
     """
-    result = post(
-        package_url,
-        verify=False,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": authorization_header,
-        },
-    )
+    try:
+        result = requests.post(
+            package_url,
+            verify=False,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": authorization_header,
+            },
+        )
+    except requests.exceptions.ConnectTimeout as e:
+        logger.error(f"{e}")
+        sys.exit(1)
     logger.info("Downloading full package")
     filename = result.headers["Content-Disposition"].split("=")[1].rsplit(".zip")[0]
     package_version = filename.split("_")[-1]
     repo_update_status = check_packages_version(package_group, package_version)
     if repo_update_status == False:
-        if not path.exists(package_group):
-            mkdir(package_group)
+        makedirs(package_group, exist_ok=True)
         package_filename = f"{filename}-{date.today()}.zip"
         package_filename = path.join(package_group, package_filename)
         with open(package_filename, "wb") as file:
@@ -155,7 +169,8 @@ def send_to_ftp(package_group, package_filename, package_version):
     ftp_password = config.ftp_password
     ftp_host = config.ftp_server
     root_dir = config.root_dir
-    ftp_server = ftp(ftp_host, ftp_user, ftp_password)
+    ftp_server = ftp_tls(ftp_host, ftp_user, ftp_password)
+    ftp_server.prot_c()
     ftp_server.encoding = "utf-8"
     ftp_server.cwd(root_dir)
     ftp_server.mkd(package_group)
@@ -165,7 +180,7 @@ def send_to_ftp(package_group, package_filename, package_version):
     ftp_server.quit()
 
 
-def check_packages_version(package_group, version):
+def check_packages_version(package_group, bit_version):
     """Check the package version on the FTP server and delete older files.
 
     The package version is compared with the existing files on the FTP server using the re module.
@@ -192,9 +207,11 @@ def check_packages_version(package_group, version):
     ftp_server.cwd(package_group)
     filenames = ftp_server.nlst()
     for filename in filenames:
-        file_version = re.search(r"(\d+\.\d+\.\d+\.\d+)", filename)
+        file_version = re.search(r"(\d+\.\d+\.\d+\.\d+)", filename).group()
         logger.info(f"Checking Version: {filename}")
-        if file_version.group() < version:
+        bit_version = version.parse(bit_version)
+        file_version = version.parse(file_version)
+        if file_version < bit_version:
             ftp_server.delete(filename)
             return False
         return True
@@ -230,7 +247,6 @@ if __name__ == "__main__":
     config = Config()
     logger = config.logging()
     signal.signal(signal.SIGINT, exit_handler)
-    bit_server_ip = config.api_server
     api_key = config.api_key
     header = set_authorization_header()
     package_name_list = get_package_name_list(header)
@@ -240,4 +256,3 @@ if __name__ == "__main__":
             status = get_package_file(header, package_url, package_name)
             if status == True:
                 sys.exit(1)
-            # check_packages_version(package_group=package_name, version="7.9.10.285")
