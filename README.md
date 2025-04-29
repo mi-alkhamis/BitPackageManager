@@ -1,5 +1,17 @@
 # Bitdefender Package Downloader and FTP Uploader
 
+![Project Status: Archived](https://img.shields.io/badge/status-archived-lightgrey?style=flat-square)
+## 📦 Archived but Functional
+
+**Note:** This project has been **archived** as of April 29, 2025 and is no longer actively maintained. However, it remains fully functional and may still be useful for learning, reference, or internal use.
+
+There are **no known bugs or security issues**, and the code continues to work as intended. Feel free to explore, fork, or reuse as needed.
+
+---
+
+Thanks for your interest and support! ⭐
+
+
 ## Overview
 
 This Python script serves as a tool to automate the process of downloading Bitdefender antivirus packages from the Bitdefender Antivirus server and subsequently uploading them to a designated FTP server. This automation streamlines the task of keeping a local repository up to date with the latest antivirus packages provided by Bitdefender.
