@@ -1,14 +1,18 @@
-from configparser import ConfigParser
+import logging
 import os
-import sys
 import re
-import logging, coloredlogs
+import sys
+from configparser import ConfigParser
 from datetime import datetime
+
+import coloredlogs
 
 
 class Config:
     def __init__(self):
+        self.environment = os.getenv("ENVIRONMENT", "production")
         self.config = ConfigParser(allow_no_value=False)
+        self.logger = self.logging()
         self.config_file = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "config.ini")
         )
@@ -18,14 +22,11 @@ class Config:
         try:
             with open(config_path, "r") as config_file:
                 self.config.read_file(config_file)
-        except FileNotFoundError:
-            print(f"Error: Config file not found at {config_path}")
-            sys.exit(1)
-        except Error as e:
-            print(f"Error reading config file:\n{e}")
+        except FileNotFoundError as e:
+            self.logger.error(f"Error: Config file not found. {e}")
             sys.exit(1)
         except Exception as e:
-            print(f"An unexpected error occurred: {e} at {config_path}")
+            self.logger.error(f"An unexpected error occurred: {e}")
             sys.exit(1)
 
     def get(self, key, fallback="", section="default"):
@@ -42,15 +43,23 @@ class Config:
     def api_key(self):
         api_key_pattern = re.compile(r"^[0-9a-fA-F]{64}$")
         api_key = str(self.get("APIKEY"))
-        if not api_key_pattern.match(api_key):
-            raise ValueError("Invalid API key format")
+        try:
+            if not api_key_pattern.match(api_key):
+                raise ValueError("Invalid API key format")
+        except ValueError as e:
+            self.logger.error(f"{e}")
+            sys.exit(1)
         return api_key
 
     @property
     def api_server(self):
         api_server = str(self.get("SERVER"))
-        if not self.validate_ipv4(api_server):
-            raise ValueError("Invalid IP Address")
+        try:
+            if not self.validate_ipv4(api_server):
+                raise ValueError("Invalid IP Address")
+        except ValueError as e:
+            self.logger.error(f"Enterd a Wrong IP Address. {e}")
+            sys.exit(1)
         return api_server
 
     @property
@@ -62,15 +71,15 @@ class Config:
 
     @property
     def ftp_user(self):
-        return str(self.get("FTP_USER"))
+        return str(self.get("FTP_USER", fallback="user"))
 
     @property
     def ftp_password(self):
-        return str(self.get("FTP_PASS"))
+        return str(self.get("FTP_PASS", fallback="pass"))
 
     @property
     def root_dir(self):
-        return str(self.get("ROOT_DIR"))
+        return str(self.get("ROOT_DIR", fallback="Bitdefender"))
 
     @property
     def log_path(self):
@@ -87,6 +96,10 @@ class Config:
         return log_separator
 
     def logging(self):
+        if self.environment == "development":
+            logging.getLogger("urllib3").setLevel(logging.DEBUG)
+        else:
+            logging.getLogger("urllib3").setLevel(logging.WARNING)
         logger = logging.getLogger(__name__)
         try:
             os.makedirs(self.log_path, exist_ok=True)
@@ -108,19 +121,19 @@ class Config:
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.INFO,
         )
         levelstyles = {
             "critical": {"bold": True, "color": "red"},
-            "debug": {"color": "magenta"},
+            "debug": {"bold": True, "color": "magenta"},
             "error": {"color": "red"},
             "info": {"color": "green"},
             "warning": {"color": "yellow"},
         }
         coloredlogs.install(
             logger=logger,
-            fmt="%(message)s",
-            level=logging.DEBUG,
+            fmt="[%(levelname)s]:%(message)s",
+            level=logging.INFO,
             level_styles=levelstyles,
         )
         return logger
